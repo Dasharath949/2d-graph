@@ -6,6 +6,7 @@
 #define CANVAS_WIDTH 80
 #define CANVAS_HEIGHT 25
 #define MAX_OBJECTS 100
+#define BG_CHAR '_'
 
 typedef struct {
     int id;
@@ -29,10 +30,10 @@ typedef struct {
 GraphicsEditor* init_editor(void) {
     GraphicsEditor* editor = (GraphicsEditor*)malloc(sizeof(GraphicsEditor));
     
-    // Initialize canvas with spaces
+    // Initialize canvas with background characters
     for (int y = 0; y < CANVAS_HEIGHT; y++) {
         for (int x = 0; x < CANVAS_WIDTH; x++) {
-            editor->canvas[y][x] = ' ';
+            editor->canvas[y][x] = BG_CHAR;
         }
     }
     
@@ -54,7 +55,7 @@ char get_pixel(GraphicsEditor* editor, int x, int y) {
     if (x >= 0 && x < CANVAS_WIDTH && y >= 0 && y < CANVAS_HEIGHT) {
         return editor->canvas[y][x];
     }
-    return ' ';
+    return BG_CHAR;
 }
 
 // Bresenham's line algorithm
@@ -168,12 +169,7 @@ int draw_circle(GraphicsEditor* editor, int cx, int cy, int radius, char ch, int
 }
 
 // Draw a rectangle
-int draw_rectangle(GraphicsEditor* editor, int x, int y, int width, int height, char ch, int filled) {
-    if (editor->object_count >= MAX_OBJECTS) {
-        printf("Error: Maximum objects reached!\n");
-        return -1;
-    }
-    
+void draw_rectangle_internal(GraphicsEditor* editor, int x, int y, int width, int height, char ch, int filled) {
     if (filled) {
         // Draw filled rectangle
         for (int yy = y; yy < y + height; yy++) {
@@ -194,6 +190,16 @@ int draw_rectangle(GraphicsEditor* editor, int x, int y, int width, int height, 
             set_pixel(editor, x + width - 1, yy, ch);
         }
     }
+}
+
+// Draw a rectangle
+int draw_rectangle(GraphicsEditor* editor, int x, int y, int width, int height, char ch, int filled) {
+    if (editor->object_count >= MAX_OBJECTS) {
+        printf("Error: Maximum objects reached!\n");
+        return -1;
+    }
+    
+    draw_rectangle_internal(editor, x, y, width, height, ch, filled);
     
     DrawObject obj;
     obj.id = editor->next_id++;
@@ -238,12 +244,7 @@ void draw_filled_triangle(GraphicsEditor* editor, int x1, int y1, int x2, int y2
 }
 
 // Draw a triangle
-int draw_triangle(GraphicsEditor* editor, int x1, int y1, int x2, int y2, int x3, int y3, char ch, int filled) {
-    if (editor->object_count >= MAX_OBJECTS) {
-        printf("Error: Maximum objects reached!\n");
-        return -1;
-    }
-    
+void draw_triangle_internal(GraphicsEditor* editor, int x1, int y1, int x2, int y2, int x3, int y3, char ch, int filled) {
     if (filled) {
         draw_filled_triangle(editor, x1, y1, x2, y2, x3, y3, ch);
     } else {
@@ -252,6 +253,16 @@ int draw_triangle(GraphicsEditor* editor, int x1, int y1, int x2, int y2, int x3
         draw_line_internal(editor, x2, y2, x3, y3, ch);
         draw_line_internal(editor, x3, y3, x1, y1, ch);
     }
+}
+
+// Draw a triangle
+int draw_triangle(GraphicsEditor* editor, int x1, int y1, int x2, int y2, int x3, int y3, char ch, int filled) {
+    if (editor->object_count >= MAX_OBJECTS) {
+        printf("Error: Maximum objects reached!\n");
+        return -1;
+    }
+    
+    draw_triangle_internal(editor, x1, y1, x2, y2, x3, y3, ch, filled);
     
     DrawObject obj;
     obj.id = editor->next_id++;
@@ -267,6 +278,32 @@ int draw_triangle(GraphicsEditor* editor, int x1, int y1, int x2, int y2, int x3
     
     editor->objects[editor->object_count++] = obj;
     return obj.id;
+}
+
+// Delete an object by ID
+void draw_object_internal(GraphicsEditor* editor, DrawObject* obj) {
+    if (strcmp(obj->type, "line") == 0) {
+        draw_line_internal(editor, obj->x1, obj->y1, obj->x2, obj->y2, obj->character);
+    } else if (strcmp(obj->type, "circle") == 0) {
+        draw_circle_internal(editor, obj->cx, obj->cy, obj->radius, obj->character, obj->filled);
+    } else if (strcmp(obj->type, "rectangle") == 0) {
+        draw_rectangle_internal(editor, obj->x, obj->y, obj->width, obj->height, obj->character, obj->filled);
+    } else if (strcmp(obj->type, "triangle") == 0) {
+        draw_triangle_internal(editor, obj->x1, obj->y1, obj->x2, obj->y2, obj->x3, obj->y3, obj->character, obj->filled);
+    }
+}
+
+void redraw_all(GraphicsEditor* editor) {
+    // Clear canvas
+    for (int y = 0; y < CANVAS_HEIGHT; y++) {
+        for (int x = 0; x < CANVAS_WIDTH; x++) {
+            editor->canvas[y][x] = BG_CHAR;
+        }
+    }
+    // Redraw all remaining objects
+    for (int i = 0; i < editor->object_count; i++) {
+        draw_object_internal(editor, &editor->objects[i]);
+    }
 }
 
 // Delete an object by ID
@@ -293,47 +330,105 @@ int delete_object(GraphicsEditor* editor, int obj_id) {
     editor->object_count--;
     
     // Redraw canvas
-    for (int y = 0; y < CANVAS_HEIGHT; y++) {
-        for (int x = 0; x < CANVAS_WIDTH; x++) {
-            editor->canvas[y][x] = ' ';
+    redraw_all(editor);
+    
+    return 1;
+}
+
+// Modify an object by ID (advanced properties)
+int modify_object(GraphicsEditor* editor, int obj_id, const char* property, int param_count, char* params[]) {
+    int found = -1;
+    
+    // Find the object
+    for (int i = 0; i < editor->object_count; i++) {
+        if (editor->objects[i].id == obj_id) {
+            found = i;
+            break;
         }
     }
     
-    // Redraw all remaining objects
-    for (int i = 0; i < editor->object_count; i++) {
-        DrawObject* obj = &editor->objects[i];
-        
-        if (strcmp(obj->type, "line") == 0) {
-            draw_line_internal(editor, obj->x1, obj->y1, obj->x2, obj->y2, obj->character);
-        } else if (strcmp(obj->type, "circle") == 0) {
-            draw_circle_internal(editor, obj->cx, obj->cy, obj->radius, obj->character, obj->filled);
-        } else if (strcmp(obj->type, "rectangle") == 0) {
-            if (obj->filled) {
-                for (int yy = obj->y; yy < obj->y + obj->height; yy++) {
-                    for (int xx = obj->x; xx < obj->x + obj->width; xx++) {
-                        set_pixel(editor, xx, yy, obj->character);
-                    }
-                }
-            } else {
-                for (int xx = obj->x; xx < obj->x + obj->width; xx++) {
-                    set_pixel(editor, xx, obj->y, obj->character);
-                    set_pixel(editor, xx, obj->y + obj->height - 1, obj->character);
-                }
-                for (int yy = obj->y; yy < obj->y + obj->height; yy++) {
-                    set_pixel(editor, obj->x, yy, obj->character);
-                    set_pixel(editor, obj->x + obj->width - 1, yy, obj->character);
-                }
-            }
-        } else if (strcmp(obj->type, "triangle") == 0) {
-            if (obj->filled) {
-                draw_filled_triangle(editor, obj->x1, obj->y1, obj->x2, obj->y2, obj->x3, obj->y3, obj->character);
-            } else {
-                draw_line_internal(editor, obj->x1, obj->y1, obj->x2, obj->y2, obj->character);
-                draw_line_internal(editor, obj->x2, obj->y2, obj->x3, obj->y3, obj->character);
-                draw_line_internal(editor, obj->x3, obj->y3, obj->x1, obj->y1, obj->character);
-            }
-        }
+    if (found == -1) {
+        printf("Object ID %d not found!\n", obj_id);
+        return 0;
     }
+    
+    DrawObject* obj = &editor->objects[found];
+    
+    if (strcmp(property, "char") == 0) {
+        if (param_count < 1) {
+            printf("Error: Missing character value!\n");
+            return 0;
+        }
+        obj->character = params[0][0];
+        printf("Object %d character updated to '%c'\n", obj_id, obj->character);
+    } else if (strcmp(property, "fill") == 0) {
+        if (param_count < 1) {
+            printf("Error: Missing fill value (true/false)!\n");
+            return 0;
+        }
+        obj->filled = (strcmp(params[0], "true") == 0 || strcmp(params[0], "1") == 0);
+        printf("Object %d filled status updated to %s\n", obj_id, obj->filled ? "true" : "false");
+    } else if (strcmp(property, "move") == 0) {
+        if (param_count < 2) {
+            printf("Error: Missing dx and dy values!\n");
+            return 0;
+        }
+        int dx = atoi(params[0]);
+        int dy = atoi(params[1]);
+        if (strcmp(obj->type, "line") == 0) {
+            obj->x1 += dx; obj->y1 += dy;
+            obj->x2 += dx; obj->y2 += dy;
+        } else if (strcmp(obj->type, "circle") == 0) {
+            obj->cx += dx; obj->cy += dy;
+        } else if (strcmp(obj->type, "rectangle") == 0) {
+            obj->x += dx; obj->y += dy;
+        } else if (strcmp(obj->type, "triangle") == 0) {
+            obj->x1 += dx; obj->y1 += dy;
+            obj->x2 += dx; obj->y2 += dy;
+            obj->x3 += dx; obj->y3 += dy;
+        }
+        printf("Object %d moved by delta (%d, %d)\n", obj_id, dx, dy);
+    } else if (strcmp(property, "resize") == 0) {
+        if (strcmp(obj->type, "line") == 0) {
+            if (param_count < 4) {
+                printf("Error: line resize requires new x1 y1 x2 y2!\n");
+                return 0;
+            }
+            obj->x1 = atoi(params[0]); obj->y1 = atoi(params[1]);
+            obj->x2 = atoi(params[2]); obj->y2 = atoi(params[3]);
+            printf("Line %d resized to (%d,%d) to (%d,%d)\n", obj_id, obj->x1, obj->y1, obj->x2, obj->y2);
+        } else if (strcmp(obj->type, "circle") == 0) {
+            if (param_count < 1) {
+                printf("Error: circle resize requires new radius!\n");
+                return 0;
+            }
+            obj->radius = atoi(params[0]);
+            printf("Circle %d resized to radius %d\n", obj_id, obj->radius);
+        } else if (strcmp(obj->type, "rectangle") == 0) {
+            if (param_count < 2) {
+                printf("Error: rectangle resize requires new width and height!\n");
+                return 0;
+            }
+            obj->width = atoi(params[0]);
+            obj->height = atoi(params[1]);
+            printf("Rectangle %d resized to size %dx%d\n", obj_id, obj->width, obj->height);
+        } else if (strcmp(obj->type, "triangle") == 0) {
+            if (param_count < 6) {
+                printf("Error: triangle resize requires new x1 y1 x2 y2 x3 y3!\n");
+                return 0;
+            }
+            obj->x1 = atoi(params[0]); obj->y1 = atoi(params[1]);
+            obj->x2 = atoi(params[2]); obj->y2 = atoi(params[3]);
+            obj->x3 = atoi(params[4]); obj->y3 = atoi(params[5]);
+            printf("Triangle %d resized to (%d,%d), (%d,%d), (%d,%d)\n", obj_id, obj->x1, obj->y1, obj->x2, obj->y2, obj->x3, obj->y3);
+        }
+    } else {
+        printf("Error: Unknown property '%s'\n", property);
+        return 0;
+    }
+    
+    // Redraw canvas
+    redraw_all(editor);
     
     return 1;
 }
@@ -342,7 +437,7 @@ int delete_object(GraphicsEditor* editor, int obj_id) {
 void clear_canvas(GraphicsEditor* editor) {
     for (int y = 0; y < CANVAS_HEIGHT; y++) {
         for (int x = 0; x < CANVAS_WIDTH; x++) {
-            editor->canvas[y][x] = ' ';
+            editor->canvas[y][x] = BG_CHAR;
         }
     }
     editor->object_count = 0;
@@ -403,162 +498,348 @@ void free_editor(GraphicsEditor* editor) {
     free(editor);
 }
 
-// Demo function
-void demo(GraphicsEditor* editor) {
-    printf("2D Graphics Editor - Demo\n");
-    printf("==================================================\n\n");
-    
-    printf("Drawing shapes...\n");
-    
-    // Draw a rectangle
-    draw_rectangle(editor, 10, 5, 20, 10, '*', 0);
-    printf("* Rectangle drawn\n");
-    
-    // Draw a filled circle
-    draw_circle(editor, 50, 12, 6, '*', 1);
-    printf("* Filled circle drawn\n");
-    
-    // Draw a triangle
-    draw_triangle(editor, 15, 20, 25, 18, 20, 24, '*', 0);
-    printf("* Triangle drawn\n");
-    
-    // Draw some lines
-    draw_line(editor, 5, 2, 35, 15, '*');
-    draw_line(editor, 60, 5, 75, 20, '*');
-    printf("* Lines drawn\n");
-    
-    // Display the canvas
-    printf("\nCanvas:\n");
-    display_canvas(editor);
-    
-    // List objects
-    list_objects(editor);
-    
-    // Delete an object
-    printf("\nDeleting object ID 2...\n");
-    delete_object(editor, 2);
-    display_canvas(editor);
-    
-    // Add more shapes
-    printf("Adding a filled rectangle...\n");
-    draw_rectangle(editor, 65, 1, 12, 5, '_', 1);
-    display_canvas(editor);
+// Helper to read stdin safely
+void get_line(char* buf, int size) {
+    if (fgets(buf, size, stdin) != NULL) {
+        buf[strcspn(buf, "\n")] = 0;
+    } else {
+        buf[0] = 0;
+    }
 }
 
-int main(int argc, char* argv[]) {
-    GraphicsEditor* editor = init_editor();
+// Forward declaration of demo
+void demo(GraphicsEditor* editor);
+
+// Menu-driven loop
+void menu_loop(GraphicsEditor* editor) {
+    char input_buf[256];
+    int running = 1;
     
-    // Check for demo mode
-    if (argc > 1 && strcmp(argv[1], "demo") == 0) {
-        demo(editor);
-    } else {
-        // Interactive mode
-        printf("2D Graphics Editor - Interactive Mode\n");
-        printf("=====================================\n");
-        printf("Commands: line, rect, circle, triangle, display, list, delete, clear, help, exit\n\n");
+    // Add default initial shapes so the user has something to see and modify immediately
+    draw_rectangle(editor, 10, 5, 20, 10, '*', 0);
+    draw_circle(editor, 50, 12, 6, '*', 0);
+    draw_triangle(editor, 15, 20, 25, 18, 20, 24, '*', 0);
+    draw_line(editor, 5, 2, 35, 15, '*');
+    
+    // Display the initial canvas right away
+    printf("\nInitial Canvas:\n");
+    display_canvas(editor);
+    
+    while (running) {
+        printf("\n=== 2D Graphics Editor Menu ===\n");
+        printf("1. Display Canvas\n");
+        printf("2. List All Shapes\n");
+        printf("3. Add a Shape\n");
+        printf("4. Modify a Shape\n");
+        printf("5. Delete a Shape\n");
+        printf("6. Clear Canvas\n");
+        printf("7. Run Auto Demo\n");
+        printf("8. Exit\n");
+        printf("Enter choice (1-8): ");
         
-        int running = 1;
-        while (running) {
-            printf("> ");
-            
-            char command[256];
-            if (fgets(command, sizeof(command), stdin) == NULL) {
+        get_line(input_buf, sizeof(input_buf));
+        int choice = atoi(input_buf);
+        
+        switch (choice) {
+            case 1:
+                display_canvas(editor);
+                break;
+            case 2:
+                list_objects(editor);
+                break;
+            case 3: {
+                printf("\nSelect Shape Type:\n");
+                printf("  1. Line\n");
+                printf("  2. Rectangle\n");
+                printf("  3. Circle\n");
+                printf("  4. Triangle\n");
+                printf("Enter shape choice (1-4): ");
+                get_line(input_buf, sizeof(input_buf));
+                int shape_choice = atoi(input_buf);
+                
+                if (shape_choice == 1) {
+                    int x1, y1, x2, y2;
+                    char ch;
+                    printf("Enter coordinates (x1 y1 x2 y2), e.g. 5 2 35 15: ");
+                    get_line(input_buf, sizeof(input_buf));
+                    if (sscanf(input_buf, "%d %d %d %d", &x1, &y1, &x2, &y2) == 4) {
+                        printf("Enter drawing character (default '*'): ");
+                        get_line(input_buf, sizeof(input_buf));
+                        ch = (strlen(input_buf) > 0) ? input_buf[0] : '*';
+                        int id = draw_line(editor, x1, y1, x2, y2, ch);
+                        printf("Line created with ID %d!\n", id);
+                        display_canvas(editor);
+                    } else {
+                        printf("Invalid format! Expected 4 integers: x1 y1 x2 y2 (e.g. 5 2 35 15)\n");
+                    }
+                } else if (shape_choice == 2) {
+                    int x, y, w, h, filled;
+                    char ch;
+                    printf("Enter position and size (x y width height), e.g. 10 5 20 10: ");
+                    get_line(input_buf, sizeof(input_buf));
+                    if (sscanf(input_buf, "%d %d %d %d", &x, &y, &w, &h) == 4) {
+                        printf("Enter drawing character (default '*'): ");
+                        get_line(input_buf, sizeof(input_buf));
+                        ch = (strlen(input_buf) > 0) ? input_buf[0] : '*';
+                        printf("Is it filled? (1 for yes, 0 for no): ");
+                        get_line(input_buf, sizeof(input_buf));
+                        filled = atoi(input_buf);
+                        int id = draw_rectangle(editor, x, y, w, h, ch, filled);
+                        printf("Rectangle created with ID %d!\n", id);
+                        display_canvas(editor);
+                    } else {
+                        printf("Invalid format! Expected 4 integers: x y width height (e.g. 10 5 20 10)\n");
+                    }
+                } else if (shape_choice == 3) {
+                    int cx, cy, r, filled;
+                    char ch;
+                    printf("Enter center and radius (cx cy radius), e.g. 40 12 5: ");
+                    get_line(input_buf, sizeof(input_buf));
+                    if (sscanf(input_buf, "%d %d %d", &cx, &cy, &r) == 3) {
+                        printf("Enter drawing character (default '*'): ");
+                        get_line(input_buf, sizeof(input_buf));
+                        ch = (strlen(input_buf) > 0) ? input_buf[0] : '*';
+                        printf("Is it filled? (1 for yes, 0 for no): ");
+                        get_line(input_buf, sizeof(input_buf));
+                        filled = atoi(input_buf);
+                        int id = draw_circle(editor, cx, cy, r, ch, filled);
+                        printf("Circle created with ID %d!\n", id);
+                        display_canvas(editor);
+                    } else {
+                        printf("Invalid format! Expected 3 integers: cx cy radius (e.g. 40 12 5)\n");
+                    }
+                } else if (shape_choice == 4) {
+                    int x1, y1, x2, y2, x3, y3, filled;
+                    char ch;
+                    printf("Enter 3 vertex coordinates (x1 y1 x2 y2 x3 y3), e.g. 15 20 25 18 20 24: ");
+                    get_line(input_buf, sizeof(input_buf));
+                    if (sscanf(input_buf, "%d %d %d %d %d %d", &x1, &y1, &x2, &y2, &x3, &y3) == 6) {
+                        printf("Enter drawing character (default '*'): ");
+                        get_line(input_buf, sizeof(input_buf));
+                        ch = (strlen(input_buf) > 0) ? input_buf[0] : '*';
+                        printf("Is it filled? (1 for yes, 0 for no): ");
+                        get_line(input_buf, sizeof(input_buf));
+                        filled = atoi(input_buf);
+                        int id = draw_triangle(editor, x1, y1, x2, y2, x3, y3, ch, filled);
+                        printf("Triangle created with ID %d!\n", id);
+                        display_canvas(editor);
+                    } else {
+                        printf("Invalid format! Expected 6 integers: x1 y1 x2 y2 x3 y3 (e.g. 15 20 25 18 20 24)\n");
+                    }
+                } else {
+                    printf("Invalid shape selection!\n");
+                }
                 break;
             }
-            
-            // Remove newline
-            command[strcspn(command, "\n")] = 0;
-            
-            char* parts[10];
-            int part_count = 0;
-            
-            // Parse command
-            char* token = strtok(command, " ");
-            while (token != NULL && part_count < 10) {
-                parts[part_count++] = token;
-                token = strtok(NULL, " ");
-            }
-            
-            if (part_count == 0) continue;
-            
-            if (strcmp(parts[0], "exit") == 0) {
-                printf("Goodbye!\n");
-                running = 0;
-            } else if (strcmp(parts[0], "help") == 0) {
-                printf("Commands: line, rect, circle, triangle, display, list, delete, clear, help, exit\n");
-            } else if (strcmp(parts[0], "display") == 0) {
-                display_canvas(editor);
-            } else if (strcmp(parts[0], "list") == 0) {
+            case 4: {
                 list_objects(editor);
-            } else if (strcmp(parts[0], "clear") == 0) {
-                clear_canvas(editor);
-                printf("Canvas cleared!\n");
-            } else if (strcmp(parts[0], "line") == 0) {
-                if (part_count < 5) {
-                    printf("Usage: line <x1> <y1> <x2> <y2> [char]\n");
-                } else {
-                    int x1 = atoi(parts[1]);
-                    int y1 = atoi(parts[2]);
-                    int x2 = atoi(parts[3]);
-                    int y2 = atoi(parts[4]);
-                    char ch = (part_count > 5) ? parts[5][0] : '*';
-                    int id = draw_line(editor, x1, y1, x2, y2, ch);
-                    printf("Line created (ID: %d)\n", id);
-                }
-            } else if (strcmp(parts[0], "rect") == 0) {
-                if (part_count < 5) {
-                    printf("Usage: rect <x> <y> <width> <height> [char] [filled]\n");
-                } else {
-                    int x = atoi(parts[1]);
-                    int y = atoi(parts[2]);
-                    int w = atoi(parts[3]);
-                    int h = atoi(parts[4]);
-                    char ch = (part_count > 5) ? parts[5][0] : '*';
-                    int filled = (part_count > 6) ? (strcmp(parts[6], "true") == 0) : 0;
-                    int id = draw_rectangle(editor, x, y, w, h, ch, filled);
-                    printf("Rectangle created (ID: %d)\n", id);
-                }
-            } else if (strcmp(parts[0], "circle") == 0) {
-                if (part_count < 4) {
-                    printf("Usage: circle <cx> <cy> <radius> [char] [filled]\n");
-                } else {
-                    int cx = atoi(parts[1]);
-                    int cy = atoi(parts[2]);
-                    int r = atoi(parts[3]);
-                    char ch = (part_count > 4) ? parts[4][0] : '*';
-                    int filled = (part_count > 5) ? (strcmp(parts[5], "true") == 0) : 0;
-                    int id = draw_circle(editor, cx, cy, r, ch, filled);
-                    printf("Circle created (ID: %d)\n", id);
-                }
-            } else if (strcmp(parts[0], "triangle") == 0) {
-                if (part_count < 7) {
-                    printf("Usage: triangle <x1> <y1> <x2> <y2> <x3> <y3> [char] [filled]\n");
-                } else {
-                    int x1 = atoi(parts[1]);
-                    int y1 = atoi(parts[2]);
-                    int x2 = atoi(parts[3]);
-                    int y2 = atoi(parts[4]);
-                    int x3 = atoi(parts[5]);
-                    int y3 = atoi(parts[6]);
-                    char ch = (part_count > 7) ? parts[7][0] : '*';
-                    int filled = (part_count > 8) ? (strcmp(parts[8], "true") == 0) : 0;
-                    int id = draw_triangle(editor, x1, y1, x2, y2, x3, y3, ch, filled);
-                    printf("Triangle created (ID: %d)\n", id);
-                }
-            } else if (strcmp(parts[0], "delete") == 0) {
-                if (part_count < 2) {
-                    printf("Usage: delete <id>\n");
-                } else {
-                    int id = atoi(parts[1]);
-                    if (delete_object(editor, id)) {
-                        printf("Object %d deleted!\n", id);
+                if (editor->object_count == 0) break;
+                
+                printf("Enter ID of the shape to modify: ");
+                get_line(input_buf, sizeof(input_buf));
+                int id = atoi(input_buf);
+                
+                // Find shape
+                int found = -1;
+                for (int i = 0; i < editor->object_count; i++) {
+                    if (editor->objects[i].id == id) {
+                        found = i;
+                        break;
                     }
                 }
-            } else {
-                printf("Unknown command: %s. Type 'help' for help.\n", parts[0]);
+                if (found == -1) {
+                    printf("Shape ID %d not found!\n", id);
+                    break;
+                }
+                
+                printf("\nSelect Property to Modify:\n");
+                printf("  1. Character\n");
+                printf("  2. Fill Status\n");
+                printf("  3. Move (shift position)\n");
+                printf("  4. Resize / Update size\n");
+                printf("Enter modification choice (1-4): ");
+                get_line(input_buf, sizeof(input_buf));
+                int prop_choice = atoi(input_buf);
+                
+                if (prop_choice == 1) {
+                    printf("Enter new drawing character: ");
+                    get_line(input_buf, sizeof(input_buf));
+                    char* params[] = { input_buf };
+                    modify_object(editor, id, "char", 1, params);
+                    display_canvas(editor);
+                } else if (prop_choice == 2) {
+                    printf("Set filled (1 for yes, 0 for no): ");
+                    get_line(input_buf, sizeof(input_buf));
+                    char* val = (atoi(input_buf) == 1) ? "true" : "false";
+                    char* params[] = { val };
+                    modify_object(editor, id, "fill", 1, params);
+                    display_canvas(editor);
+                } else if (prop_choice == 3) {
+                    int dx, dy;
+                    printf("Enter movement delta (dx dy): ");
+                    get_line(input_buf, sizeof(input_buf));
+                    if (sscanf(input_buf, "%d %d", &dx, &dy) == 2) {
+                        char dx_str[16], dy_str[16];
+                        sprintf(dx_str, "%d", dx);
+                        sprintf(dy_str, "%d", dy);
+                        char* params[] = { dx_str, dy_str };
+                        modify_object(editor, id, "move", 2, params);
+                        display_canvas(editor);
+                    } else {
+                        printf("Invalid offsets!\n");
+                    }
+                } else if (prop_choice == 4) {
+                    DrawObject* obj = &editor->objects[found];
+                    if (strcmp(obj->type, "line") == 0) {
+                        int x1, y1, x2, y2;
+                        printf("Enter new coordinates (x1 y1 x2 y2): ");
+                        get_line(input_buf, sizeof(input_buf));
+                        if (sscanf(input_buf, "%d %d %d %d", &x1, &y1, &x2, &y2) == 4) {
+                            char x1s[16], y1s[16], x2s[16], y2s[16];
+                            sprintf(x1s, "%d", x1); sprintf(y1s, "%d", y1);
+                            sprintf(x2s, "%d", x2); sprintf(y2s, "%d", y2);
+                            char* params[] = { x1s, y1s, x2s, y2s };
+                            modify_object(editor, id, "resize", 4, params);
+                            display_canvas(editor);
+                        } else {
+                            printf("Invalid coordinates!\n");
+                        }
+                    } else if (strcmp(obj->type, "circle") == 0) {
+                        int r;
+                        printf("Enter new radius: ");
+                        get_line(input_buf, sizeof(input_buf));
+                        r = atoi(input_buf);
+                        char rs[16];
+                        sprintf(rs, "%d", r);
+                        char* params[] = { rs };
+                        modify_object(editor, id, "resize", 1, params);
+                        display_canvas(editor);
+                    } else if (strcmp(obj->type, "rectangle") == 0) {
+                        int w, h;
+                        printf("Enter new width and height: ");
+                        get_line(input_buf, sizeof(input_buf));
+                        if (sscanf(input_buf, "%d %d", &w, &h) == 2) {
+                            char ws[16], hs[16];
+                            sprintf(ws, "%d", w); sprintf(hs, "%d", h);
+                            char* params[] = { ws, hs };
+                            modify_object(editor, id, "resize", 2, params);
+                            display_canvas(editor);
+                        } else {
+                            printf("Invalid dimensions!\n");
+                        }
+                    } else if (strcmp(obj->type, "triangle") == 0) {
+                        int x1, y1, x2, y2, x3, y3;
+                        printf("Enter new vertex coordinates (x1 y1 x2 y2 x3 y3): ");
+                        get_line(input_buf, sizeof(input_buf));
+                        if (sscanf(input_buf, "%d %d %d %d %d %d", &x1, &y1, &x2, &y2, &x3, &y3) == 6) {
+                            char x1s[16], y1s[16], x2s[16], y2s[16], x3s[16], y3s[16];
+                            sprintf(x1s, "%d", x1); sprintf(y1s, "%d", y1);
+                            sprintf(x2s, "%d", x2); sprintf(y2s, "%d", y2);
+                            sprintf(x3s, "%d", x3); sprintf(y3s, "%d", y3);
+                            char* params[] = { x1s, y1s, x2s, y2s, x3s, y3s };
+                            modify_object(editor, id, "resize", 6, params);
+                            display_canvas(editor);
+                        } else {
+                            printf("Invalid vertices!\n");
+                        }
+                    }
+                } else {
+                    printf("Invalid property choice!\n");
+                }
+                break;
             }
+            case 5: {
+                list_objects(editor);
+                if (editor->object_count == 0) break;
+                printf("Enter ID of the shape to delete: ");
+                get_line(input_buf, sizeof(input_buf));
+                int id = atoi(input_buf);
+                delete_object(editor, id);
+                display_canvas(editor);
+                break;
+            }
+            case 6:
+                clear_canvas(editor);
+                printf("Canvas cleared!\n");
+                display_canvas(editor);
+                break;
+            case 7:
+                clear_canvas(editor);
+                demo(editor);
+                break;
+            case 8:
+                printf("Goodbye!\n");
+                running = 0;
+                break;
+            default:
+                printf("Unknown option! Please enter a choice between 1 and 8.\n");
         }
     }
+}
+
+// Demo function showing adding, deleting, and modifying objects
+void demo(GraphicsEditor* editor) {
+    printf("2D Graphics Editor - Output Diagram (* and _ format)\n");
+    printf("==================================================\n\n");
+    
+    printf("1. Adding shapes (Circle, Rectangle, Line, Triangle)...\n");
+    
+    // Draw a rectangle
+    int rect_id = draw_rectangle(editor, 10, 5, 20, 10, '*', 0);
+    printf("   * Rectangle drawn (ID: %d)\n", rect_id);
+    
+    // Draw a circle
+    int circle_id = draw_circle(editor, 50, 12, 6, '*', 0);
+    printf("   * Circle drawn (ID: %d)\n", circle_id);
+    
+    // Draw a triangle
+    int tri_id = draw_triangle(editor, 15, 20, 25, 18, 20, 24, '*', 0);
+    printf("   * Triangle drawn (ID: %d)\n", tri_id);
+    
+    // Draw a line
+    int line_id = draw_line(editor, 5, 2, 35, 15, '*');
+    printf("   * Line drawn (ID: %d)\n", line_id);
+    
+    // Display the initial canvas
+    printf("\nCanvas (Initial):\n");
+    display_canvas(editor);
+    list_objects(editor);
+    
+    printf("\n2. Modifying shapes in the picture...\n");
+    
+    // Modify circle: Change to filled
+    printf("   * Modifying Circle (ID: %d): Changing filled status to true\n", circle_id);
+    char* fill_params[] = { "true" };
+    modify_object(editor, circle_id, "fill", 1, fill_params);
+    
+    // Modify rectangle: Move it right by 5 and down by 2
+    printf("   * Modifying Rectangle (ID: %d): Moving by delta (5, 2)\n", rect_id);
+    char* move_params[] = { "5", "2" };
+    modify_object(editor, rect_id, "move", 2, move_params);
+    
+    // Display modified canvas
+    printf("\nCanvas (After Modifications):\n");
+    display_canvas(editor);
+    
+    printf("\n3. Deleting shapes from the picture...\n");
+    
+    // Delete the triangle
+    printf("   * Deleting Triangle (ID: %d)\n", tri_id);
+    delete_object(editor, tri_id);
+    
+    // Display canvas after deletion
+    printf("\nCanvas (After Deletion):\n");
+    display_canvas(editor);
+    list_objects(editor);
+}
+
+int main(void) {
+    GraphicsEditor* editor = init_editor();
+    
+    printf("2D Graphics Editor\n");
+    printf("==================\n");
+    
+    menu_loop(editor);
     
     free_editor(editor);
     return 0;
