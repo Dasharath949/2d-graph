@@ -4,6 +4,7 @@
 #include <math.h>
 
 #define CANVAS_WIDTH 80
+
 #define CANVAS_HEIGHT 25
 #define MAX_OBJECTS 100
 #define BG_CHAR '_'
