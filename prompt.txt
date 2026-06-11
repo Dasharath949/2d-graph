@@ -1,0 +1,51 @@
+Create a complete C program for a terminal-based 2D graphics editor.
+
+Requirements:
+
+1. Use an ASCII canvas of size 80x25.
+2. Support drawing:
+   - Lines
+   - Rectangles
+   - Circles
+   - Triangles
+3. Each shape must support:
+   - Outline mode
+   - Filled mode
+4. Use efficient drawing algorithms:
+   - Bresenham line algorithm for lines
+   - Bresenham circle algorithm for circles
+   - Barycentric coordinate filling for triangles
+5. Maintain all drawn objects in memory using structures.
+6. Each object should have:
+   - Unique ID
+   - Shape type
+   - Coordinates
+   - Drawing character
+   - Filled flag
+7. Implement object management:
+   - Add object
+   - Delete object by ID
+   - List objects
+   - Clear canvas
+8. Provide an interactive command-line interface with commands:
+
+   line x1 y1 x2 y2 [char]
+   rect x y width height [char] [filled]
+   circle cx cy radius [char] [filled]
+   triangle x1 y1 x2 y2 x3 y3 [char] [filled]
+   display
+   list
+   delete id
+   clear
+   help
+   exit
+
+9. Use modular functions for each drawing operation.
+10. Store canvas as a 2D character array.
+11. Redraw the canvas after object deletion.
+12. Include input validation.
+13. Provide a demo mode that automatically draws several shapes.
+14. Compile with:
+    gcc -o graphics_editor graphics_editor.c -lm
+
+Generate the full source code with comments and a README explaining usage and algorithms.
